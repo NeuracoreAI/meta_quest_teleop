@@ -1214,7 +1214,20 @@ void ovrVrInputStandard::RenderRunningFrame(
     BeamRenderer->RenderEyeView(out.FrameMatrices.CenterView, projectionMatrix, out.Surfaces);
 
     int axisSurfaces = 0;
-    std::vector<std::pair<char, OVR::Matrix4f>> handPoseTransformations;
+    // Store all three transforms per hand: grip, model, pointer
+    struct HandTransforms {
+        char side;
+        OVR::Matrix4f gripPose;
+        OVR::Matrix4f modelPose;
+        OVR::Matrix4f pointerPose;
+    };
+    std::vector<HandTransforms> handPoseTransformations;
+
+    // Add world frame visualization at origin
+    // This shows the world coordinate system (X=red, Y=green, Z=blue) at the origin
+    if (SampleConfiguration.RenderAxis) {
+        TransformMatrices[axisSurfaces++] = OVR::Matrix4f::Identity();
+    }
 
 
     // add the controller model surfaces to the list of surfaces to render
@@ -1237,18 +1250,22 @@ void ovrVrInputStandard::RenderRunningFrame(
 
         const Posef& handPose = trDevice.GetHandPose();
 
-        const Posef &headPose = trDevice.GetHeadPose();
         const Matrix4f matDeviceModel = trDevice.GetModelMatrix(handPose);
         const OVR::Matrix4f handPoseMatrix = OVR::Matrix4f(handPose);
-        const OVR::Matrix4f headPoseMatrix = OVR::Matrix4f(headPose);
-        OVR::Matrix4f handPoseMatrixHeadCoord(Matrix4f::NoInit);
-        OVR::Matrix4f::Multiply(&handPoseMatrixHeadCoord,
-                                headPoseMatrix.Inverted(), handPoseMatrix);
-        handPoseTransformations.push_back(
-            std::make_pair(side, handPoseMatrixHeadCoord));
+        const OVR::Matrix4f pointerMatrix = trDevice.GetPointerMatrix();
+        // Use world-space hand pose for tracking
+        // Use world-space hand pose instead of head-relative coordinates
+        // This ensures the controller stays fixed in world space when head moves
+        HandTransforms transforms;
+        transforms.side = side;
+        transforms.gripPose = handPoseMatrix;
+        transforms.modelPose = matDeviceModel;
+        transforms.pointerPose = pointerMatrix;
+        handPoseTransformations.push_back(transforms);
+        
         TransformMatrices[axisSurfaces++] = handPoseMatrix;
         TransformMatrices[axisSurfaces++] = matDeviceModel;
-        TransformMatrices[axisSurfaces++] = trDevice.GetPointerMatrix();
+        TransformMatrices[axisSurfaces++] = pointerMatrix;
 
         bool renderHand = (trDevice.GetHandPoseConfidence() == ovrConfidence_HIGH);
         if (renderHand) {
@@ -1256,19 +1273,25 @@ void ovrVrInputStandard::RenderRunningFrame(
         }
     }
 
-    // send values
+    // send values - now sending all three transforms per hand
     std::ostringstream output_ss, buttons_ss;
     bool first = true;
+    
+    // Send hand transforms
     for (auto it = std::begin(handPoseTransformations);
          it != std::end(handPoseTransformations); ++it) {
       if (!first) {
         output_ss << '|';
         buttons_ss << ",";
       }
-      char side = it->first;
-      const OVR::Matrix4f &transformationMatrix = it->second;
-      output_ss << side << ":"
-                << TransformationMatrixToString(transformationMatrix);
+      char side = it->side;
+      // Send all three transforms with identifiers: g=grip, m=model, p=pointer
+      output_ss << side << "g:"
+                << TransformationMatrixToString(it->gripPose)
+                << "|" << side << "m:"
+                << TransformationMatrixToString(it->modelPose)
+                << "|" << side << "p:"
+                << TransformationMatrixToString(it->pointerPose);
       buttons_ss << Buttons->current_to_string(side);
       first = false;
     }
