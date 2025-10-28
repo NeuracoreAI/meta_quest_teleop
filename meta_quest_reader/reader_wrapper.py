@@ -132,7 +132,7 @@ class MetaQuestReaderWrapper:
         hand: Literal['left', 'right', 'l', 'r'] = 'right',
         transform_type: Literal['grip', 'pointer', 'model'] = 'grip'
     ) -> np.ndarray | None:
-        """Get hand controller transform in ROS coordinate system.
+        """Get the 4x4 transformation matrix for a hand controller in the ROS coordinate system.
 
         This function applies a quaternion [0.5, -0.5, -0.5, 0.5] to the transform to convert from OpenXR coordinate system to ROS coordinate system.
 
@@ -157,78 +157,6 @@ class MetaQuestReaderWrapper:
         T_static[:3, :3] = Q.as_matrix()
         
         return T_static @ transform_openxr
-    
-
-    def get_hand_controller_position(
-        self,
-        hand: Literal['left', 'right', 'l', 'r'] = 'right',
-        transform_type: Literal['grip', 'pointer', 'model'] = 'grip'
-    ) -> np.ndarray | None:
-        """Get the position [x, y, z] of a hand controller.
-        
-        Args:
-            hand: Which hand ('left', 'right', 'l', or 'r')
-            transform_type: Type of transform ('grip', 'pointer', or 'model')
-            
-        Returns:
-            numpy array [x, y, z] in meters, or None if not available
-        """
-        transform = self.get_transform(hand, transform_type)
-        if transform is None:
-            return None
-        return transform[:3, 3]
-    
-
-    def get_hand_controller_orientation_quaternion(
-        self,
-        hand: Literal['left', 'right', 'l', 'r'] = 'right',
-        transform_type: Literal['grip', 'pointer', 'model'] = 'grip'
-    ) -> np.ndarray | None:
-        """Get the orientation as a quaternion [x, y, z, w].
-        
-        Args:
-            hand: Which hand ('left', 'right', 'l', or 'r')
-            transform_type: Type of transform ('grip', 'pointer', or 'model')
-            
-        Returns:
-            numpy array [x, y, z, w] quaternion, or None if not available
-        """
-        transform = self.get_transform(hand, transform_type)
-        if transform is None:
-            return None
-        
-        try:
-            rotation = Rotation.from_matrix(transform[:3, :3])
-            return rotation.as_quat()  # [x, y, z, w]
-        except ValueError:
-            return None
-    
-
-    def get_hand_controller_orientation_euler(
-        self,
-        hand: Literal['left', 'right', 'l', 'r'] = 'right',
-        seq: str = 'xyz',
-        transform_type: Literal['grip', 'pointer', 'model'] = 'grip'
-    ) -> np.ndarray | None:
-        """Get the orientation as Euler angles [roll, pitch, yaw].
-        
-        Args:
-            hand: Which hand ('left', 'right', 'l', or 'r')
-            seq: Euler angle sequence (default 'xyz')
-            transform_type: Type of transform ('grip', 'pointer', or 'model')
-            
-        Returns:
-            numpy array [roll, pitch, yaw] in radians, or None if not available
-        """
-        transform = self.get_transform(hand, transform_type)
-        if transform is None:
-            return None
-        
-        try:
-            rotation = Rotation.from_matrix(transform[:3, :3])
-            return rotation.as_euler(seq)
-        except ValueError:
-            return None
 
 
     def get_button_state(self, button_name: str) -> bool:
