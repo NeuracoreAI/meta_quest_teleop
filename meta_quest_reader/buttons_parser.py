@@ -16,16 +16,14 @@ def parse_buttons(text: str) -> dict[str, Any]:
     buttons: dict[str, Any] = {}
     if "R" in split_text:  # right hand if available
         split_text.remove("R")  # remove marker
-        buttons.update(
-            {
-                "A": False,
-                "B": False,
-                "RThU": False,  # indicates that right thumb is up from the rest position
-                "RJ": False,  # joystick pressed
-                "RG": False,  # trigger on the grip
-                "RTr": False,  # trigger on the index finger
-            }
-        )
+        buttons.update({
+            "A": False,
+            "B": False,
+            "RThU": False,  # indicates that right thumb is up from the rest position
+            "RJ": False,  # joystick pressed
+            "RG": False,  # trigger on the grip
+            "RTr": False,  # trigger on the index finger
+        })
         # besides following keys are provided:
         # 'rightJS' / 'leftJS' -
         #   (x, y) position of joystick. x, y both in range (-1.0, 1.0)
@@ -36,16 +34,14 @@ def parse_buttons(text: str) -> dict[str, Any]:
 
     if "L" in split_text:  # left hand accordingly
         split_text.remove("L")  # remove marker
-        buttons.update(
-            {
-                "X": False,
-                "Y": False,
-                "LThU": False,
-                "LJ": False,
-                "LG": False,
-                "LTr": False,
-            }
-        )
+        buttons.update({
+            "X": False,
+            "Y": False,
+            "LThU": False,
+            "LJ": False,
+            "LG": False,
+            "LTr": False,
+        })
     for key in buttons.keys():
         if key in list(split_text):
             buttons[key] = True
