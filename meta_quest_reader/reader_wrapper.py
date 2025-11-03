@@ -61,7 +61,7 @@ class MetaQuestReaderWrapper:
     def __del__(self) -> None:
         """Destructor."""
         self.cleanup()
-        
+
     def cleanup(self) -> None:
         """Cleanup the MetaQuestReaderWrapper."""
         if hasattr(self, "reader"):
