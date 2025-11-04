@@ -148,5 +148,6 @@ cython_debug/
 
 # Project relevant
 app_source/Projects/Android/.idea/caches/
+*.keystore
 
 .DS_Store
