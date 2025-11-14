@@ -1229,6 +1229,12 @@ void ovrVrInputStandard::RenderRunningFrame(
         TransformMatrices[axisSurfaces++] = OVR::Matrix4f::Identity();
     }
 
+    // Add world frame visualization at origin
+    // This shows the world coordinate system (X=red, Y=green, Z=blue) at the origin
+    if (SampleConfiguration.RenderAxis) {
+        TransformMatrices[axisSurfaces++] = OVR::Matrix4f::Identity();
+    }
+
 
     // add the controller model surfaces to the list of surfaces to render
     for (int i = 0; i < (int)InputDevices.size(); ++i) {
