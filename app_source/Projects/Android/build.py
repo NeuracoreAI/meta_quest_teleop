@@ -1,3 +1,5 @@
+"""Build script for the Meta Quest teleop app."""
+
 #!/usr/local/bin/python
 
 # This first bit of code is common bootstrapping code
@@ -11,7 +13,8 @@ import sys
 import ovrbuild
 
 
-def init():
+def init() -> None:
+    """Initialize the build environment."""
     root = os.path.realpath(os.path.dirname(os.path.realpath(__file__)))
     os.chdir(root)  # make sure we are always executing from the project directory
     while os.path.isdir(os.path.join(root, "bin/scripts/build")) is False:

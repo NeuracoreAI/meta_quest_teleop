@@ -488,7 +488,7 @@ namespace OVRFW {
         // Called when the application shuts down
         virtual void AppShutdown(const OVRFW::ovrAppContext* context) override;
         // Called when the application is resumed by the system.
-        virtual void AppResumed(const OVRFW::ovrAppContext* contet) override;
+        virtual void AppResumed(const OVRFW::ovrAppContext* context) override;
         // Called when the application is paused by the system.
         virtual void AppPaused(const OVRFW::ovrAppContext* context) override;
         // Called once per frame when the VR session is active.

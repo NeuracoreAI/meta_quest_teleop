@@ -1,22 +1,22 @@
 default_install_hook_types: [pre-commit]
-default_stages: [commit]
+default_stages: [pre-commit]
 
 repos:
   - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
+    rev: 7.0.0
     hooks:
       - id: isort
         args: ["--profile", "black", "--filter-files"]
 
   - repo: https://github.com/psf/black
-    rev: 24.1.1
+    rev: 25.9.0
     hooks:
       - id: black
         language_version: python3
         args: [--line-length=88, --preview]
 
   - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.0.272
+    rev: v0.14.2
     hooks:
       - id: ruff
         # Ignoring unused imports within __init__.py files.
@@ -26,13 +26,26 @@ repos:
     rev: 6.3.0
     hooks:
       - id: pydocstyle
-        files: meta_quest_reader/
         args: ["--convention=google"]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
+    rev: "v1.18.2"
     hooks:
       - id: mypy
-        files: meta_quest_reader/
         args: ["--disallow-untyped-defs", "--ignore-missing-imports"]
-        additional_dependencies: [types-requests]
+        additional_dependencies: [types-requests]        
+
+  - repo: https://github.com/streetsidesoftware/cspell-cli
+    rev: v9.2.0
+    hooks:
+      - id: cspell # Spell check changed files
+      - id: cspell # Spell check the commit message
+        name: check commit message spelling
+        args:
+          - --no-must-find-files
+          - --no-progress
+          - --no-summary
+          - --files
+          - .git/COMMIT_EDITMSG
+        stages: [commit-msg]
+        always_run: true

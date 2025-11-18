@@ -10,8 +10,8 @@ import numpy as np
 from ppadb.client import Client as AdbClient
 from scipy.spatial.transform import Rotation
 
-from meta_quest_reader.buttons_parser import parse_buttons
-from meta_quest_reader.FPS_counter import FPSCounter
+from meta_quest_teleop.buttons_parser import parse_buttons
+from meta_quest_teleop.FPS_counter import FPSCounter
 
 
 def eprint(*args: Any, **kwargs: Any) -> None:

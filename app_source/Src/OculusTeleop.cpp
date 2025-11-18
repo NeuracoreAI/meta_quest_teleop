@@ -398,7 +398,7 @@ VRMenuObject* StandardDevicesToggleButton = nullptr;
 VRMenuObject* NonStandardDevicesToggleButton = nullptr;
 
 uint64_t FrameIndexToPrint = 0;
-const float kHapticsGripThreashold = 0.1f;
+const float kHapticsGripThreshold = 0.1f;
 
 // Matrix to get from tracking pose to the OpenXR compatible 'grip' pose
 static const OVR::Matrix4f xfTrackedFromBinding = OVR::Matrix4f(OVR::Posef{
@@ -1638,7 +1638,7 @@ void ovrInputDeviceHandBase::InitFromSkeletonAndMesh(
     HandModel.Init(*skeleton);
     FingerJointHandles.resize(HandModel.GetSkeleton().GetJoints().size());
 
-    /// Walk the transform hierarchy and store the wolrd space transforms in TransformMatrices
+    /// Walk the transform hierarchy and store the world space transforms in TransformMatrices
     const std::vector<OVR::Posef>& poses = HandModel.GetSkeleton().GetWorldSpacePoses();
     for (size_t j = 0; j < poses.size(); ++j) {
         TransformMatrices[j] = Matrix4f(poses[j]);
@@ -1663,7 +1663,7 @@ void ovrInputDeviceHandBase::InitFromSkeletonAndMesh(
     attribs.uv0.resize(mesh->NumVertices);
     memcpy(attribs.uv0.data(), &mesh->VertexUV0[0], mesh->NumVertices * sizeof(ovrVector2f));
     attribs.jointIndices.resize(mesh->NumVertices);
-    /// We can't do a straight copy heere since the sizes don't match
+    /// We can't do a straight copy here since the sizes don't match
     for (std::uint32_t i = 0; i < mesh->NumVertices; ++i) {
         const ovrVector4s& blendIndices = mesh->BlendIndices[i];
         attribs.jointIndices[i].x = blendIndices.x;
@@ -1946,7 +1946,7 @@ void ovrInputDeviceTrackedRemoteHand::SetControllerModel(ModelFile* m) {
 
 void ovrInputDeviceTrackedRemoteHand::UpdateHapticRequestedState(
     const ovrInputStateTrackedRemote& remoteInputState) {
-    if (remoteInputState.IndexTrigger > kHapticsGripThreashold) {
+    if (remoteInputState.IndexTrigger > kHapticsGripThreshold) {
         RequestedHapticState = {
             SampleConfiguration.OnTriggerHapticsState, remoteInputState.IndexTrigger};
     } else {
@@ -2103,7 +2103,7 @@ void ovrInputDeviceStandardPointer::ResetHaptics(ovrMobile* ovr, float displayTi
 
 void ovrInputDeviceStandardPointer::UpdateHapticRequestedState(
     const ovrInputStateStandardPointer& inputState) {
-    if (inputState.PointerStrength > kHapticsGripThreashold) {
+    if (inputState.PointerStrength > kHapticsGripThreshold) {
         RequestedHapticState = {
             SampleConfiguration.OnTriggerHapticsState, inputState.PointerStrength};
     } else {

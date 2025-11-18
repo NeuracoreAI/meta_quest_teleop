@@ -4,7 +4,7 @@ Note this repo is an extension of: https://github.com/rail-berkeley/oculus_reade
 
 This repository provides the tool to read the position and pressed button from the Meta Quest device.
 
-Meta Quest reader consits of two elements: python script which receives the readings from the APK and the APK itself. Currently the pose of the controllers and pressed buttons are transfered from the APK. This behavior can be extended using provided APK [source code](app_source).
+Meta Quest reader consists of two elements: python script which receives the readings from the APK and the APK itself. Currently the pose of the controllers and pressed buttons are transferred from the APK. This behavior can be extended using provided APK [source code](app_source).
 
 ## Clone the repository
 
@@ -45,7 +45,7 @@ If you haven’t used Meta Quest before, start it and follow the steps to create
     4. You will be able to see your username on the following screen:
     ![image_2](https://user-images.githubusercontent.com/14967831/106832678-f7702d80-6646-11eb-823e-1001d6bffe01.png)
 2. Enable Meta Quest development mode:
-    1. If you belong to RAIL, inform me (Jedrzej Orbik) that you need to join the development organization. This is required to activate debugging mode on the device. Otherwise create your own organization <https://developer.oculus.com/manage/organizations/create/> and fill in the appropriate informaiton.
+    1. If you belong to RAIL, inform me (Jedrzej Orbik) that you need to join the development organization. This is required to activate debugging mode on the device. Otherwise create your own organization <https://developer.oculus.com/manage/organizations/create/> and fill in the appropriate information.
     2. Turn on the device you want to use for development.
     3. Open the Meta app on your phone and then go to **Settings**.
     4. Tap the device and then go to **More Settings** > **Developer Mode**.
