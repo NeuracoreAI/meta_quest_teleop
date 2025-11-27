@@ -10,8 +10,7 @@ import numpy as np
 from ppadb.client import Client as AdbClient
 from scipy.spatial.transform import Rotation
 
-from meta_quest_reader.buttons_parser import parse_buttons
-from meta_quest_reader.FPS_counter import FPSCounter
+from meta_quest_teleop.buttons_parser import parse_buttons
 
 
 def eprint(*args: Any, **kwargs: Any) -> None:
@@ -36,7 +35,6 @@ class MetaQuestReader:
         ip_address: str | None = None,
         port: int = 5555,
         APK_name: str = "com.rail.oculus.teleop",
-        print_FPS: bool = False,
         run: bool = True,
     ) -> None:
         """Initialize the MetaQuestReader.
@@ -45,7 +43,6 @@ class MetaQuestReader:
             ip_address: IP address to the device. If None, USB connection is used.
             port: Port number for connection. Defaults to 5555.
             APK_name: Android package name. Defaults to "com.rail.oculus.teleop".
-            print_FPS: Whether to print FPS statistics. Defaults to False.
             run: Whether to start reader immediately. Defaults to True.
         """
         self.running = False
@@ -57,9 +54,6 @@ class MetaQuestReader:
         self.ip_address = ip_address
         self.port = port
         self.APK_name = APK_name
-        self.print_FPS = print_FPS
-        if self.print_FPS:
-            self.fps_counter = FPSCounter()
 
         # Button state tracking for edge detection
         self._prev_button_states: dict[str, bool] = {}
@@ -594,8 +588,6 @@ class MetaQuestReader:
                         self._latest_buttons = buttons
                         self._handle_button_events(buttons)
 
-                    if self.print_FPS:
-                        self.fps_counter.get_and_print_fps()
             except UnicodeDecodeError:
                 pass
         file_obj.close()

@@ -1,0 +1,23 @@
+{
+    "ignorePaths": [
+        "cSpell.json",
+        ".*",
+        "*.Dockerfile",
+        "docker-compose.yml",
+        "requirements*.txt",
+        "*.sh",
+        ".pre-commit-config.yaml",
+        ".gitmodules"
+    ],
+    "dictionaryDefinitions": [
+        {
+            "name": "meta-quest-teleop-dictionary",
+            "path": "./meta-quest-teleop-dictionary.txt",
+            "addWords": true
+        }
+    ],
+    "language": "en,en-GB",
+    "dictionaries": [
+        "meta-quest-teleop-dictionary"
+    ]
+}

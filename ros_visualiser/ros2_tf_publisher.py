@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ROS2 node for publishing Meta Quest hand transforms to TF.
 
-This node uses MetaQuestReaderWrapper to get hand transforms and publishes
+This node uses MetaQuestReader to get hand transforms and publishes
 them to ROS2 TF in the meta_world frame. The coordinate system conversion
 from OpenXR to ROS is handled by tf2 via a static transform publisher.
 
@@ -25,7 +25,7 @@ from rclpy.time import Time
 from scipy.spatial.transform import Rotation
 from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 
-from meta_quest_reader.reader_wrapper import MetaQuestReaderWrapper
+from meta_quest_teleop.reader import MetaQuestReader
 
 
 class MetaQuestTFPublisher(Node):
@@ -76,12 +76,12 @@ class MetaQuestTFPublisher(Node):
         self.get_logger().info(
             f"Connecting to Meta Quest (IP: {ip_address}, Port: {port})..."
         )
-        self.reader_wrapper = MetaQuestReaderWrapper(ip_address=ip_address, port=port)
+        self.reader = MetaQuestReader(ip_address=ip_address, port=port)
         self.get_logger().info("Connected to Meta Quest!")
 
         # Register button callbacks
-        self.reader_wrapper.on("button_b_pressed", self._on_button_b_pressed)
-        self.reader_wrapper.on("button_a_pressed", self._on_button_a_pressed)
+        self.reader.on("button_b_pressed", self._on_button_b_pressed)
+        self.reader.on("button_a_pressed", self._on_button_a_pressed)
 
         # Initialize TF broadcasters
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -109,7 +109,7 @@ class MetaQuestTFPublisher(Node):
                 )
 
         # Track previous poses and time for velocity calculation
-        self.prev_poses = {}
+        self.prev_poses: dict[str, np.ndarray] = {}
         self.prev_time = self.get_clock().now()
 
         # Create timer for publishing transforms
@@ -169,16 +169,12 @@ class MetaQuestTFPublisher(Node):
 
     def _on_button_b_pressed(self) -> None:
         """Set home pose for relative tracking (all hands, all transform types)."""
-        # Get current transforms for both hands and all transform types
-        for transform_type in self.transform_types:
-            left_transform = self.reader_wrapper.get_hand_controller_transform_openxr(
-                "left", transform_type
-            )
-            right_transform = self.reader_wrapper.get_hand_controller_transform_openxr(
-                "right", transform_type
-            )
+        # Get current transforms for both hands
+        left_transform = self.reader.get_hand_controller_transform_openxr("left")
+        right_transform = self.reader.get_hand_controller_transform_openxr("right")
 
-            # Set home poses (for TF only)
+        # Set home poses for all transform types (same transform for all types now)
+        for transform_type in self.transform_types:
             if left_transform is not None:
                 self.home_poses_left[transform_type] = left_transform.copy()
                 self._log_home_set(
@@ -413,22 +409,30 @@ class MetaQuestTFPublisher(Node):
 
         TF uses relative tracking if enabled, poses always use absolute coords.
         """
-        # Update reader wrapper to get latest data
-        if not self.reader_wrapper.update():
+        # Update reader to get latest data
+        if not self.reader.update():
             return
 
         # Get current time for all messages
         current_time = self.get_clock().now()
 
         # Publish transforms for both hands and all transform types
+        # Note: The MetaQuestReader now provides a single transform per hand,
+        # so we use the same transform for all transform types (grip, pointer, model)
+
+        # Get transforms once per hand (reused for all transform types)
+        right_transform_openxr = self.reader.get_hand_controller_transform_openxr(
+            "right"
+        )
+        left_transform_openxr = self.reader.get_hand_controller_transform_openxr("left")
+        right_transform_ros = self.reader.get_hand_controller_transform_ros("right")
+        left_transform_ros = self.reader.get_hand_controller_transform_ros("left")
+
         for transform_type in self.transform_types:
-            # Get and publish right hand transform
-            right_transform = self.reader_wrapper.get_hand_controller_transform_openxr(
-                "right", transform_type
-            )
-            if right_transform is not None:
+            # Publish right hand transform
+            if right_transform_openxr is not None:
                 right_relative_transform = self.get_transform_relative_to_home(
-                    right_transform, self.home_poses_right[transform_type]
+                    right_transform_openxr, self.home_poses_right[transform_type]
                 )
 
                 # Convert to ROS2 message and publish to TF
@@ -441,13 +445,9 @@ class MetaQuestTFPublisher(Node):
                 if right_tf_msg is not None:
                     self.tf_broadcaster.sendTransform(right_tf_msg)
 
-                right_transform_relative_ros = (
-                    self.reader_wrapper.get_hand_controller_transform_ros(
-                        "right", transform_type
-                    )
-                )
+            if right_transform_ros is not None:
                 right_pose_msg = self._matrix_to_pose_stamped(
-                    right_transform_relative_ros, self.world_frame
+                    right_transform_ros, self.world_frame
                 )
                 if right_pose_msg is not None:
                     self.pose_publishers[f"right_{transform_type}"].publish(
@@ -456,16 +456,13 @@ class MetaQuestTFPublisher(Node):
 
                 # Publish velocity
                 self._publish_velocity(
-                    "right", transform_type, right_transform_relative_ros, current_time
+                    "right", transform_type, right_transform_ros, current_time
                 )
 
-            # Get and publish left hand transform
-            left_transform = self.reader_wrapper.get_hand_controller_transform_openxr(
-                "left", transform_type
-            )
-            if left_transform is not None:
+            # Publish left hand transform
+            if left_transform_openxr is not None:
                 left_relative_transform = self.get_transform_relative_to_home(
-                    left_transform, self.home_poses_left[transform_type]
+                    left_transform_openxr, self.home_poses_left[transform_type]
                 )
 
                 # Convert to ROS2 message and publish to TF
@@ -478,13 +475,9 @@ class MetaQuestTFPublisher(Node):
                 if left_tf_msg is not None:
                     self.tf_broadcaster.sendTransform(left_tf_msg)
 
-                left_transform_relative_ros = (
-                    self.reader_wrapper.get_hand_controller_transform_ros(
-                        "left", transform_type
-                    )
-                )
+            if left_transform_ros is not None:
                 left_pose_msg = self._matrix_to_pose_stamped(
-                    left_transform_relative_ros, self.world_frame
+                    left_transform_ros, self.world_frame
                 )
                 if left_pose_msg is not None:
                     self.pose_publishers[f"left_{transform_type}"].publish(
@@ -493,14 +486,14 @@ class MetaQuestTFPublisher(Node):
 
                 # Publish velocity
                 self._publish_velocity(
-                    "left", transform_type, left_transform_relative_ros, current_time
+                    "left", transform_type, left_transform_ros, current_time
                 )
 
         # Update time for next velocity calculation
         self.prev_time = current_time
 
 
-def main(args=None) -> None:
+def main(args: Optional[list[str]] = None) -> None:
     """Initialize ROS2, create node, and spin until interrupted.
 
     Args:
