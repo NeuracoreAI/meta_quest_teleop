@@ -65,6 +65,17 @@ class MetaQuestReader:
             "button_a_pressed": [],
             "button_x_pressed": [],
             "button_y_pressed": [],
+            "button_rj_pressed": [],
+            "button_lj_pressed": [],
+        }
+
+        self._callbacks_locks: dict[str, threading.Lock] = {
+            "button_b_pressed": threading.Lock(),
+            "button_a_pressed": threading.Lock(),
+            "button_x_pressed": threading.Lock(),
+            "button_y_pressed": threading.Lock(),
+            "button_rj_pressed": threading.Lock(),
+            "button_lj_pressed": threading.Lock(),
         }
 
         # Cache latest transforms and button values (validated)
@@ -315,35 +326,6 @@ class MetaQuestReader:
         with self._lock:
             return self.last_transforms, self.last_buttons
 
-    def update(self) -> bool:
-        """Poll for new transforms and button states.
-
-        Call this in your main loop to get latest data.
-
-        Returns:
-            True if new data was received, False otherwise
-        """
-        transforms, buttons = self.get_transformations_and_buttons()
-
-        if transforms is None or len(transforms) == 0:
-            return False
-
-        # Validate and store transforms
-        for key, matrix in transforms.items():
-            validated = self._validate_transform(matrix)
-
-            # only store the transform if it is valid
-            # TODO: maybe print a warning under a debug flag?
-            if validated is not None:
-                self._latest_transforms[key] = validated
-
-        # Store button states
-        if buttons is not None:
-            self._latest_buttons = buttons
-            self._handle_button_events(buttons)
-
-        return True
-
     def get_hand_controller_transform_openxr(
         self,
         hand: Literal["left", "right", "l", "r"] = "right",
@@ -364,8 +346,8 @@ class MetaQuestReader:
         # Use hand key directly as the pointer transform key
         key = hand_key
         if key in self._latest_transforms:
-            return self._latest_transforms[key].copy()
-
+            with self._lock:
+                return self._latest_transforms[key].copy()
         return None
 
     def get_hand_controller_transform_ros(
@@ -411,9 +393,8 @@ class MetaQuestReader:
         Returns:
             True if button is pressed, False otherwise
         """
-        # TODO: think about this. if the button was not found and we just
-        # return False.
-        return self._latest_buttons.get(button_name, False)
+        with self._lock:
+            return self._latest_buttons.get(button_name, False)
 
     def get_grip_value(
         self, hand: Literal["left", "right", "l", "r"] = "right"
@@ -429,7 +410,8 @@ class MetaQuestReader:
         """
         hand_key = self._normalize_hand_key(hand)
         button_name = "leftGrip" if hand_key == "l" else "rightGrip"
-        value = self._latest_buttons.get(button_name, 0.0)
+        with self._lock:
+            value = self._latest_buttons.get(button_name, 0.0)
 
         # Handle case where value might be a tuple from parsing
         if isinstance(value, tuple):
@@ -450,7 +432,8 @@ class MetaQuestReader:
         """
         hand_key = self._normalize_hand_key(hand)
         button_name = "leftTrig" if hand_key == "l" else "rightTrig"
-        value = self._latest_buttons.get(button_name, 0.0)
+        with self._lock:
+            value = self._latest_buttons.get(button_name, 0.0)
 
         # Handle case where value might be a tuple from parsing
         if isinstance(value, tuple):
@@ -471,7 +454,8 @@ class MetaQuestReader:
         """
         hand_key = self._normalize_hand_key(hand)
         button_name = "leftJS" if hand_key == "l" else "rightJS"
-        value = self._latest_buttons.get(button_name, (0.0, 0.0))
+        with self._lock:
+            value = self._latest_buttons.get(button_name, (0.0, 0.0))
 
         if isinstance(value, tuple) and len(value) >= 2:
             return (float(value[0]), float(value[1]))
@@ -485,6 +469,8 @@ class MetaQuestReader:
         - 'button_a_pressed': Called when Button A is pressed
         - 'button_x_pressed': Called when Button X is pressed
         - 'button_y_pressed': Called when Button Y is pressed
+        - 'button_rj_pressed': Called when Right Joystick is pressed
+        - 'button_lj_pressed': Called when Left Joystick is pressed
 
         Args:
             event: Event name
@@ -541,25 +527,44 @@ class MetaQuestReader:
         Args:
             buttons: Dictionary of button states
         """
-        # Check for button presses (rising edge detection)
-        button_map = {
-            "B": "button_b_pressed",
-            "A": "button_a_pressed",
-            "X": "button_x_pressed",
-            "Y": "button_y_pressed",
-        }
+        # Use lock to prevent race conditions when called from multiple threads
+        callbacks_to_trigger = []
+        with self._lock:
+            # Check for button presses (rising edge detection)
+            button_map = {
+                "B": "button_b_pressed",
+                "A": "button_a_pressed",
+                "X": "button_x_pressed",
+                "Y": "button_y_pressed",
+                "RJ": "button_rj_pressed",
+                "LJ": "button_lj_pressed",
+            }
 
-        for button_key, event_name in button_map.items():
-            current_state = buttons.get(button_key, False)
-            prev_state = self._prev_button_states.get(button_key, False)
+            for button_key, event_name in button_map.items():
+                current_state = buttons.get(button_key, False)
+                prev_state = self._prev_button_states.get(button_key, False)
 
-            # Rising edge detected
-            if current_state and not prev_state:
-                # Trigger callbacks
-                for callback in self._callbacks[event_name]:
-                    callback()
+                # Rising edge detected
+                if current_state and not prev_state:
+                    if not self._callbacks_locks[event_name].locked():
+                        self._callbacks_locks[event_name].acquire()
+                    else:
+                        continue
+                    # Update state BEFORE triggering callbacks to prevent double-trigger
+                    self._prev_button_states[button_key] = current_state
+                    # Collect callbacks to trigger (release lock before calling to avoid blocking)
+                    callbacks_to_trigger.extend(
+                        [(event_name, cb) for cb in self._callbacks[event_name]]
+                    )
+                else:
+                    self._prev_button_states[button_key] = current_state
 
-            self._prev_button_states[button_key] = current_state
+        # Trigger callbacks outside the lock to avoid blocking other threads
+        for event_name, callback in callbacks_to_trigger:
+            try:
+                callback()
+            finally:
+                self._callbacks_locks[event_name].release()
 
     def read_logcat_by_line(self, connection: Any) -> None:
         """Read logcat output line by line.
