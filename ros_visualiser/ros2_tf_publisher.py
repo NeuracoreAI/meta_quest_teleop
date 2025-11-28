@@ -409,10 +409,6 @@ class MetaQuestTFPublisher(Node):
 
         TF uses relative tracking if enabled, poses always use absolute coords.
         """
-        # Update reader to get latest data
-        if not self.reader.update():
-            return
-
         # Get current time for all messages
         current_time = self.get_clock().now()
 
