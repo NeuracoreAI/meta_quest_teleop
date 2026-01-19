@@ -76,7 +76,10 @@ class MetaQuestTFPublisher(Node):
         self.get_logger().info(
             f"Connecting to Meta Quest (IP: {ip_address}, Port: {port})..."
         )
-        self.reader = MetaQuestReader(ip_address=ip_address, port=port)
+        self.reader = MetaQuestReader(
+            ip_address=ip_address,
+            port=port,
+        )
         self.get_logger().info("Connected to Meta Quest!")
 
         # Register button callbacks

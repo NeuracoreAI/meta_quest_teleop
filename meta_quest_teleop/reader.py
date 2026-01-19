@@ -36,6 +36,7 @@ class MetaQuestReader:
         port: int = 5555,
         APK_name: str = "com.rail.oculus.teleop",
         run: bool = True,
+        axis_mask: list[int] | None = None,
     ) -> None:
         """Initialize the MetaQuestReader.
 
@@ -44,6 +45,8 @@ class MetaQuestReader:
             port: Port number for connection. Defaults to 5555.
             APK_name: Android package name. Defaults to "com.rail.oculus.teleop".
             run: Whether to start reader immediately. Defaults to True.
+            axis_mask: Mask for axes [x, y, z, roll, pitch, yaw]. 1 = enabled, 0 = disabled.
+                       Masked axes (x, y, z, roll, pitch, yaw) will be zeroed.
         """
         self.running = False
         self.last_transforms: dict[str, Any] | None = {}
@@ -54,6 +57,28 @@ class MetaQuestReader:
         self.ip_address = ip_address
         self.port = port
         self.APK_name = APK_name
+
+        # Validate axis mask
+        if axis_mask is not None:
+            assert (
+                len(axis_mask) == 6
+            ), "axis_mask must have 6 elements [x, y, z, roll, pitch, yaw]"
+            assert np.all(np.isin(axis_mask, [0, 1])), "axis_mask values must be 0 or 1"
+            # NOTE: Because we are reading in openxr coordinates, we need to resort the mask for ROS coordinates
+            # x -> z, y -> -x, z -> -y , roll -> -pitch, pitch -> -roll, yaw -> yaw
+            self.axis_mask = np.array(
+                [
+                    axis_mask[1],
+                    axis_mask[2],
+                    axis_mask[0],
+                    axis_mask[4],
+                    axis_mask[5],
+                    axis_mask[3],
+                ],
+                dtype=int,
+            )
+        else:
+            self.axis_mask = None
 
         # Button state tracking for edge detection
         self._prev_button_states: dict[str, bool] = {}
@@ -326,6 +351,34 @@ class MetaQuestReader:
         with self._lock:
             return self.last_transforms, self.last_buttons
 
+    def _apply_axis_mask(self, transform: np.ndarray) -> np.ndarray:
+        """Apply axis mask to transform, zeroing masked axes.
+
+        Args:
+            transform: Current 4x4 transformation matrix (ROS coordinates)
+
+        Returns:
+            Masked 4x4 transformation matrix (ROS coordinates)
+        """
+        # Start with current transform
+
+        transform_translation = transform[:3, 3]
+        transform_translation_masked = transform_translation * self.axis_mask[:3]
+        transform_rotation = transform[:3, :3]
+        transform_rotation_euler = Rotation.from_matrix(transform_rotation).as_euler(
+            "xyz"
+        )
+        transform_rotation_euler_masked = transform_rotation_euler * self.axis_mask[3:]
+        transform_rotation_masked = Rotation.from_euler(
+            "xyz", transform_rotation_euler_masked
+        ).as_matrix()
+
+        transform_masked = np.eye(4)
+        transform_masked[:3, 3] = transform_translation_masked
+        transform_masked[:3, :3] = transform_rotation_masked
+
+        return transform_masked
+
     def get_hand_controller_transform_openxr(
         self,
         hand: Literal["left", "right", "l", "r"] = "right",
@@ -347,7 +400,10 @@ class MetaQuestReader:
         key = hand_key
         if key in self._latest_transforms:
             with self._lock:
-                return self._latest_transforms[key].copy()
+                transform_openxr = self._latest_transforms[key].copy()
+            if self.axis_mask is not None:
+                transform_openxr = self._apply_axis_mask(transform_openxr)
+            return transform_openxr
         return None
 
     def get_hand_controller_transform_ros(
@@ -381,7 +437,8 @@ class MetaQuestReader:
         T_static = np.eye(4)
         T_static[:3, :3] = Q.as_matrix()
 
-        return T_static @ transform_openxr
+        transform_ros = T_static @ transform_openxr
+        return transform_ros
 
     def get_button_state(self, button_name: str) -> bool:
         """Get current state of a button.
