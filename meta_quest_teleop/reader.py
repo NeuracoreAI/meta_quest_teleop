@@ -355,10 +355,10 @@ class MetaQuestReader:
         """Apply axis mask to transform, zeroing masked axes.
 
         Args:
-            transform: Current 4x4 transformation matrix (ROS coordinates)
+            transform: Current 4x4 transformation matrix (OpenXR coordinates)
 
         Returns:
-            Masked 4x4 transformation matrix (ROS coordinates)
+            Masked 4x4 transformation matrix (OpenXR coordinates)
         """
         # Start with current transform
 
@@ -386,6 +386,7 @@ class MetaQuestReader:
         """Get the 4x4 transformation matrix for a hand controller.
 
         The transform is in the OpenXR coordinate system.
+        See README.md "Coordinate Systems: ROS vs OpenXR" section for details.
 
         Args:
             hand: Which hand ('left', 'right', 'l', or 'r')
@@ -417,8 +418,8 @@ class MetaQuestReader:
         transform to convert from OpenXR coordinate system to ROS coordinate
         system.
 
-        OpenXR coordinate system: X=right, Y=up, Z=backward
-        ROS coordinate system: X=forward, Y=left, Z=up
+        See README.md "Coordinate Systems: ROS vs OpenXR" section for details
+        on the coordinate system differences and conversion.
 
         Args:
             hand: Which hand ('left', 'right', 'l', or 'r')
