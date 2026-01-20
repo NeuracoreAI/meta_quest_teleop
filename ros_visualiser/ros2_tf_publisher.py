@@ -13,6 +13,9 @@ This follows the correct ROS2 tf2 approach:
 The node also handles homing/relative tracking functionality for TF transforms
 by setting a home pose with Button B and resetting with Button A. Pose topics
 are always published in absolute coordinates.
+
+See README.md "Coordinate Systems: ROS vs OpenXR" section for details on
+coordinate system differences and conversions.
 """
 
 from typing import Optional
@@ -146,7 +149,11 @@ class MetaQuestTFPublisher(Node):
         )
 
     def _publish_static_transform(self) -> None:
-        """Publish static transform from map to meta_world (OpenXR->ROS)."""
+        """Publish static transform from map to meta_world (OpenXR->ROS).
+
+        See README.md "Coordinate Systems: ROS vs OpenXR" section for details
+        on the coordinate system conversion.
+        """
         static_transform = TransformStamped()
         static_transform.header.stamp = self.get_clock().now().to_msg()
         static_transform.header.frame_id = self.world_frame
@@ -235,7 +242,8 @@ class MetaQuestTFPublisher(Node):
         """Convert 4x4 transform matrix to PoseStamped.
 
         Args:
-            matrix: 4x4 transform matrix (ROS coordinates)
+            matrix: 4x4 transform matrix (ROS coordinates).
+                   See README.md "Coordinate Systems: ROS vs OpenXR" section.
             frame_id: Frame ID for message header
 
         Returns:
@@ -275,7 +283,8 @@ class MetaQuestTFPublisher(Node):
         """Convert 4x4 transform matrix to TransformStamped.
 
         Args:
-            matrix: 4x4 transform matrix (OpenXR coordinates)
+            matrix: 4x4 transform matrix (OpenXR coordinates).
+                   See README.md "Coordinate Systems: ROS vs OpenXR" section.
             frame_id: Parent frame ID (typically 'meta_world')
             child_frame_id: Child frame ID (hand frame name)
 
@@ -331,7 +340,8 @@ class MetaQuestTFPublisher(Node):
         Args:
             hand: 'left' or 'right'
             transform_type: 'grip', 'pointer', or 'model'
-            current_transform: Current 4x4 transform matrix (ROS coordinates)
+            current_transform: Current 4x4 transform matrix (ROS coordinates).
+                              See README.md "Coordinate Systems: ROS vs OpenXR" section.
             current_time: Current ROS time
         """
         key = f"{hand}_{transform_type}"
@@ -389,8 +399,9 @@ class MetaQuestTFPublisher(Node):
         """Compute transform relative to home pose (T_home^-1 @ T_current).
 
         Args:
-            transform: Current absolute 4x4 transform (OpenXR coordinates)
-            home_pose: Home pose 4x4 transform or None
+            transform: Current absolute 4x4 transform (OpenXR coordinates).
+                      See README.md "Coordinate Systems: ROS vs OpenXR" section.
+            home_pose: Home pose 4x4 transform or None (OpenXR coordinates)
 
         Returns:
             Relative transform if enabled and home set, else absolute transform

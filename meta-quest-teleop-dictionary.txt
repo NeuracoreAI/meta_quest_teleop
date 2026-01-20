@@ -6,6 +6,8 @@ Binormal
 boneindex
 Carmack
 dlopen
+docstring
+docstrings
 dists
 efigs
 enableextensions

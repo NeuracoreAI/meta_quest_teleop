@@ -6,6 +6,39 @@ This repository provides the tool to read the position and pressed button from t
 
 Meta Quest reader consists of two elements: python script which receives the readings from the APK and the APK itself. Currently the pose of the controllers and pressed buttons are transferred from the APK. This behavior can be extended using provided APK [source code](app_source).
 
+## Coordinate Systems: ROS vs OpenXR
+
+This library works with two different coordinate systems that are important to understand:
+
+### OpenXR Coordinate System
+The Meta Quest device natively uses the **OpenXR coordinate system**:
+- **X-axis**: Points to the right
+- **Y-axis**: Points up
+- **Z-axis**: Points backward (away from the user)
+
+This is the coordinate system used internally by the Meta Quest tracking system and is what you get when calling `get_hand_controller_transform_openxr()`.
+
+### ROS Coordinate System
+ROS (Robot Operating System) uses a different convention:
+- **X-axis**: Points forward
+- **Y-axis**: Points left
+- **Z-axis**: Points up
+
+This is the standard coordinate system used in ROS and is what you get when calling `get_hand_controller_transform_ros()`.
+
+### Conversion Between Systems
+The conversion from OpenXR to ROS coordinates is performed using a static rotation quaternion `[0.5, -0.5, -0.5, 0.5]`. This transformation:
+- Rotates X from right → forward
+- Rotates Y from up → left  
+- Rotates Z from backward → up
+
+### Usage in Code
+- **For ROS integration**: Use `get_hand_controller_transform_ros()` to get transforms already converted to ROS coordinates
+- **For OpenXR/native data**: Use `get_hand_controller_transform_openxr()` to get transforms in the native OpenXR coordinate system
+- **For TF publishing**: The `ros2_tf_publisher.py` node publishes transforms in the `meta_world` frame (OpenXR coordinates) and uses a static transform to link to the ROS `map` frame, allowing tf2 to handle coordinate conversions automatically
+
+When working with transforms, always be aware of which coordinate system you're using. See the docstrings in the code for specific coordinate system information for each function.
+
 ## Clone the repository
 
 To pull the APK correctly, Git LFS has to be configured before cloning the repository. The installation is described here https://git-lfs.github.com. On Ubuntu follow these steps:
