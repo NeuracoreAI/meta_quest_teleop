@@ -150,7 +150,7 @@ class MetaQuestTFPublisher(Node):
 
     def _publish_static_transform(self) -> None:
         """Publish static transform from map to meta_world (OpenXR->ROS).
-        
+
         See README.md "Coordinate Systems: ROS vs OpenXR" section for details
         on the coordinate system conversion.
         """
