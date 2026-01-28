@@ -146,7 +146,8 @@ class MetaQuestReader:
         """
         try:
             client.remote_connect(self.ip_address, self.port)
-        except RuntimeError:
+        except RuntimeError as e:
+            eprint(f"⚠️ Failed to connect to device over network: {e}")
             os.system("adb devices")
             client.remote_connect(self.ip_address, self.port)
         assert self.ip_address is not None
@@ -179,7 +180,8 @@ class MetaQuestReader:
         """
         try:
             devices = client.devices()
-        except RuntimeError:
+        except RuntimeError as e:
+            eprint(f"⚠️ Failed to get USB devices: {e}")
             os.system("adb devices")
             devices = client.devices()
         for device in devices:
@@ -294,7 +296,8 @@ class MetaQuestReader:
         """
         try:
             transforms_string, buttons_string = string.split("&")
-        except ValueError:
+        except ValueError as e:
+            eprint(f"⚠️ Failed to split data string by '&': {e}")
             return None, None
         split_transform_strings = transforms_string.split("|")
         transforms = {}
@@ -336,8 +339,8 @@ class MetaQuestReader:
         if self.tag in line:
             try:
                 output += line.split(self.tag + ": ")[1]
-            except ValueError:
-                pass
+            except ValueError as e:
+                eprint(f"⚠️ Failed to extract data from logcat line: {e}")
         return output
 
     def get_transformations_and_buttons(
@@ -651,8 +654,8 @@ class MetaQuestReader:
                         self._latest_buttons = buttons
                         self._handle_button_events(buttons)
 
-            except UnicodeDecodeError:
-                pass
+            except UnicodeDecodeError as e:
+                eprint(f"⚠️ Unicode decode error reading logcat line: {e}")
         file_obj.close()
         connection.close()
 

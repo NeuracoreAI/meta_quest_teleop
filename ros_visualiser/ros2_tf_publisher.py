@@ -274,7 +274,10 @@ class MetaQuestTFPublisher(Node):
             pose.pose.orientation.w = float(quaternion[3])
 
             return pose
-        except ValueError:
+        except ValueError as e:
+            self.get_logger().warning(
+                f"Failed to convert rotation matrix to quaternion for pose: {e}"
+            )
             return None
 
     def _matrix_to_transform_stamped(
@@ -370,7 +373,10 @@ class MetaQuestTFPublisher(Node):
             # Convert rotation difference to axis-angle (rotation vector)
             # The rotation vector direction is the axis, magnitude is the angle
             angular_vel = Rotation.from_matrix(R_diff).as_rotvec() / dt
-        except ValueError:
+        except ValueError as e:
+            self.get_logger().warning(
+                f"Failed to convert rotation to axis-angle for velocity: {e}"
+            )
             angular_vel = np.zeros(3)
 
         # Create and publish TwistStamped message
