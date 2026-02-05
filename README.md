@@ -4,7 +4,9 @@ Note this repo is an extension of: https://github.com/rail-berkeley/oculus_reade
 
 This repository provides the tool to read the position and pressed button from the Meta Quest device.
 
-Meta Quest reader consists of two elements: python script which receives the readings from the APK and the APK itself. Currently the pose of the controllers and pressed buttons are transferred from the APK. This behavior can be extended using provided APK [source code](app_source).
+Meta Quest reader consists of two elements: python script which receives the readings from the APK and the APK itself. **We use our pointer APK on the device** (see `meta_quest_teleop/APK/`). Currently the pose of the controllers and pressed buttons are transferred from the APK. This behavior can be extended using provided APK [source code](app_source).
+
+**Installing the APK on the device:** Follow the APK installation instructions from the [RAIL original repo](https://github.com/rail-berkeley/oculus_reader).
 
 ## Coordinate Systems: ROS vs OpenXR
 
