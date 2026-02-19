@@ -633,10 +633,10 @@ class MetaQuestReader:
         Args:
             connection: Connection to read from.
         """
-        file_obj = connection.socket.makefile()
+        file_obj = connection.socket.makefile(mode="rb", buffering=1024)
         while self.running:
             try:
-                line = file_obj.readline().strip()
+                line = file_obj.readline().decode("utf-8", errors="replace").strip()
                 data = self.extract_data(line)
                 if data:
                     transforms, buttons = MetaQuestReader.process_data(data)
