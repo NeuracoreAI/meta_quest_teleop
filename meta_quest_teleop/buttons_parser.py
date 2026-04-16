@@ -12,7 +12,8 @@ def parse_buttons(text: str) -> dict[str, Any]:
     Returns:
         Dictionary with button states.
     """
-    split_text = text.split(",")
+    # Normalize whitespace so tokens like " A " are treated as "A".
+    split_text = [token.strip() for token in text.split(",") if token.strip()]
     buttons: dict[str, Any] = {}
     if "R" in split_text:  # right hand if available
         split_text.remove("R")  # remove marker
@@ -48,15 +49,19 @@ def parse_buttons(text: str) -> dict[str, Any]:
                 "LTr": False,
             }
         )
-    for key in buttons.keys():
-        if key in list(split_text):
+    for key in list(buttons.keys()):
+        if key in split_text:
             buttons[key] = True
             split_text.remove(key)
     for elem in split_text:
-        split_elem = elem.split(" ")
+        split_elem = [part for part in elem.split(" ") if part]
         if len(split_elem) < 2:
             continue
         key = split_elem[0]
-        value = tuple([float(x) for x in split_elem[1:]])
+        try:
+            value = tuple(float(x) for x in split_elem[1:])
+        except ValueError:
+            # Ignore malformed numeric fields while preserving other parsed inputs.
+            continue
         buttons[key] = value
     return buttons

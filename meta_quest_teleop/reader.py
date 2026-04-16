@@ -1,6 +1,7 @@
 """Meta Quest Reader."""
 
 import os
+import socket
 import sys
 import threading
 import time
@@ -15,11 +16,13 @@ from meta_quest_teleop.buttons_parser import parse_buttons
 
 def eprint(*args: Any, **kwargs: Any) -> None:
     """Print error messages to stderr."""
-    RED = "\033[1;31m"
-    sys.stderr.write(RED)
-    print(*args, file=sys.stderr, **kwargs)
-    RESET = "\033[0;0m"
-    sys.stderr.write(RESET)
+    red = "\033[1;31m"
+    reset = "\033[0m"
+    sep = kwargs.pop("sep", " ")
+    end = kwargs.pop("end", "\n")
+    text = sep.join(str(arg) for arg in args)
+    sys.stderr.write(f"{red}{text}{reset}{end}")
+    sys.stderr.flush()
 
 
 class MetaQuestReader:
@@ -37,6 +40,9 @@ class MetaQuestReader:
         APK_name: str = "com.rail.oculus.teleop",
         run: bool = True,
         axis_mask: list[int] | None = None,
+        communication_timeout_s: float = 0.5,
+        auto_recover_on_stale: bool = True,
+        stale_recovery_cool_down_s: float = 1.0,
     ) -> None:
         """Initialize the MetaQuestReader.
 
@@ -47,6 +53,12 @@ class MetaQuestReader:
             run: Whether to start reader immediately. Defaults to True.
             axis_mask: Mask for axes [x, y, z, roll, pitch, yaw]. 1 = enabled, 0 = disabled.
                        Masked axes (x, y, z, roll, pitch, yaw) will be zeroed.
+            communication_timeout_s: Max seconds without receiving a valid Quest
+                payload before watchdog marks communication as stale.
+            auto_recover_on_stale: If True, try restarting the Quest teleop
+                activity when communication stays stale.
+            stale_recovery_cool_down_s: Minimum seconds between auto-recovery
+                attempts.
         """
         self.running = False
         self.last_transforms: dict[str, Any] | None = {}
@@ -57,6 +69,9 @@ class MetaQuestReader:
         self.ip_address = ip_address
         self.port = port
         self.APK_name = APK_name
+        self.communication_timeout_s = max(communication_timeout_s, 0.0)
+        self.auto_recover_on_stale = auto_recover_on_stale
+        self.stale_recovery_cool_down_s = max(stale_recovery_cool_down_s, 0.0)
 
         # Validate axis mask
         if axis_mask is not None:
@@ -106,6 +121,15 @@ class MetaQuestReader:
         # Cache latest transforms and button values (validated)
         self._latest_transforms: dict[str, np.ndarray] = {}
         self._latest_buttons: dict[str, Any] = {}
+        self._last_data_received_time: float | None = None
+        self._communication_stale_reported = False
+        self._stream_open = False
+        self._lines_seen = 0
+        self._tagged_lines_seen = 0
+        self._parse_failures = 0
+        self._last_tagged_payload_snippet = ""
+        self._last_line_time: float | None = None
+        self._last_stale_recovery_attempt_time: float | None = None
 
         self.device = self.get_device()
         self.install(verbose=False)
@@ -353,6 +377,101 @@ class MetaQuestReader:
         """
         with self._lock:
             return self.last_transforms, self.last_buttons
+
+    def get_seconds_since_last_communication(self) -> float | None:
+        """Return elapsed seconds since last valid Quest payload."""
+        with self._lock:
+            if self._last_data_received_time is None:
+                return None
+            return time.monotonic() - self._last_data_received_time
+
+    def _record_data_received(self) -> None:
+        """Update watchdog timestamp when valid payload is received."""
+        self._last_data_received_time = time.monotonic()
+        if self._communication_stale_reported:
+            print("✓ Meta Quest communication restored")
+            self._communication_stale_reported = False
+
+    def _check_communication_watchdog(self) -> None:
+        """Report communication timeout once until data resumes."""
+        if self.communication_timeout_s <= 0.0:
+            return
+        elapsed = self.get_seconds_since_last_communication()
+        if elapsed is None:
+            return
+        if (
+            elapsed > self.communication_timeout_s
+            and not self._communication_stale_reported
+        ):
+            if not self._stream_open:
+                cause = "ADB logcat stream closed"
+                hint = (
+                    "Restart the reader/script, then verify USB/WiFi ADB "
+                    "connection (`adb devices`) and keep headset awake."
+                )
+            elif self._tagged_lines_seen == 0:
+                cause = "no Quest-tagged log lines seen"
+                hint = (
+                    "Meta Quest app likely not emitting logs; open "
+                    "`com.rail.oculus.teleop` on headset and verify the app is running."
+                )
+            elif (
+                self._parse_failures > 0
+                and self._parse_failures >= self._tagged_lines_seen // 2
+            ):
+                cause = "Quest logs received but payload parsing failing"
+                hint = (
+                    "Check APK/client version mismatch and payload format. "
+                    "Try reinstalling the APK from this repo."
+                )
+            else:
+                cause = "stream alive but no valid payloads recently"
+                hint = (
+                    "Check headset network stability / USB cable and ensure the app "
+                    "has tracking permissions and remains in foreground."
+                )
+            eprint(
+                "⚠️ Meta Quest communication timeout: "
+                f"no data for {elapsed:.3f}s "
+                f"(threshold={self.communication_timeout_s:.3f}s); "
+                f"cause={cause}; "
+                f"lines_seen={self._lines_seen}, "
+                f"tagged_lines={self._tagged_lines_seen}, "
+                f"parse_failures={self._parse_failures}. "
+                f"Hint: {hint}"
+            )
+            if self._last_tagged_payload_snippet:
+                eprint(
+                    "Last tagged payload snippet: "
+                    f"{self._last_tagged_payload_snippet}"
+                )
+            self._communication_stale_reported = True
+        self._maybe_attempt_stale_recovery(elapsed)
+
+    def _maybe_attempt_stale_recovery(self, elapsed: float) -> None:
+        """Attempt self-healing when stream is stale for too long."""
+        if not self.auto_recover_on_stale:
+            return
+        # Give the stream a bit of grace before trying to intervene.
+        if elapsed < max(self.communication_timeout_s * 4.0, 1.5):
+            return
+        now = time.monotonic()
+        if self._last_stale_recovery_attempt_time is not None:
+            since_last_attempt = now - self._last_stale_recovery_attempt_time
+            if since_last_attempt < self.stale_recovery_cool_down_s:
+                return
+        self._last_stale_recovery_attempt_time = now
+        try:
+            eprint(
+                "🔄 Attempting Meta Quest stale recovery: restarting teleop activity..."
+            )
+            self.device.shell(
+                'am start -n "com.rail.oculus.teleop/com.rail.oculus.teleop.MainActivity" '
+                "-a android.intent.action.MAIN -c android.intent.category.LAUNCHER"
+            )
+            eprint("✓ Meta Quest stale recovery command sent")
+        except Exception as e:
+            eprint(f"❌ Meta Quest stale recovery attempt failed: {e}")
 
     def _apply_axis_mask(self, transform: np.ndarray) -> np.ndarray:
         """Apply axis mask to transform, zeroing masked axes.
@@ -633,15 +752,23 @@ class MetaQuestReader:
         Args:
             connection: Connection to read from.
         """
+        connection.socket.settimeout(0.1)
+        self._stream_open = True
         file_obj = connection.socket.makefile(mode="rb", buffering=1024)
         while self.running:
             try:
                 line = file_obj.readline().decode("utf-8", errors="replace").strip()
+                self._lines_seen += 1
+                self._last_line_time = time.monotonic()
                 data = self.extract_data(line)
                 if data:
+                    self._tagged_lines_seen += 1
+                    self._last_tagged_payload_snippet = data[:160]
                     transforms, buttons = MetaQuestReader.process_data(data)
                     with self._lock:
                         self.last_transforms, self.last_buttons = transforms, buttons
+                    if transforms is None and buttons is None:
+                        self._parse_failures += 1
 
                     # Update validated transforms and handle button events
                     if transforms is not None:
@@ -654,8 +781,32 @@ class MetaQuestReader:
                         self._latest_buttons = buttons
                         self._handle_button_events(buttons)
 
+                    if transforms is not None or buttons is not None:
+                        with self._lock:
+                            self._record_data_received()
+                else:
+                    self._check_communication_watchdog()
+
+            except socket.timeout:
+                self._check_communication_watchdog()
+            except OSError as e:
+                # Text I/O wrappers over timed sockets may raise OSError instead of
+                # socket.timeout when no data is available before timeout.
+                if "timed out" in str(e).lower():
+                    self._check_communication_watchdog()
+                    continue
+                self._stream_open = False
+                eprint(f"❌ Meta Quest reader stream error: {e}")
+                self._check_communication_watchdog()
+                break
             except UnicodeDecodeError as e:
                 eprint(f"⚠️ Unicode decode error reading logcat line: {e}")
+            except Exception as e:
+                self._stream_open = False
+                eprint(f"❌ Meta Quest reader stream error: {e}")
+                self._check_communication_watchdog()
+                break
+        self._stream_open = False
         file_obj.close()
         connection.close()
 
