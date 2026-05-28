@@ -4,7 +4,10 @@ Note this repo is an extension of: https://github.com/rail-berkeley/oculus_reade
 
 This repository provides the tool to read the position and pressed button from the Meta Quest device.
 
-Meta Quest reader consists of two elements: python script which receives the readings from the APK and the APK itself. **We use our pointer APK on the device** (see `meta_quest_teleop/APK/`). Currently the pose of the controllers and pressed buttons are transferred from the APK. This behavior can be extended using provided APK [source code](app_source).
+Meta Quest reader consists of two elements: python script which receives the readings from the APK and the APK itself.
+
+
+**We use our pointer APK on the device** `teleop-pointer-frame-relative.apk`, which streams **pointer** poses (`lp` / `rp`) in the **headset tracking frame** (head-relative). The world-space variant is `teleop-rail-orig.apk` (grip poses in the VR play space). Pressed buttons are also transferred. This behavior can be extended using provided APK [source code](app_source).
 
 **Installing the APK on the device:** Follow the APK installation instructions from the [RAIL original repo](https://github.com/rail-berkeley/oculus_reader).
 
@@ -34,9 +37,18 @@ The conversion from OpenXR to ROS coordinates is performed using a static rotati
 - Rotates Y from up → left  
 - Rotates Z from backward → up
 
+### Hand transform types (grip / model / pointer)
+The APK log stream can include three 4×4 transforms per hand: `lg`/`lm`/`lp` and `rg`/`rm`/`rp`. The Python reader selects one via `hand_transform_type` (default: `"pointer"`):
+
+```python
+reader = MetaQuestReader(hand_transform_type="pointer")  # head-frame with frame-relative APK
+transform = reader.get_hand_controller_transform_ros("right")
+```
+
 ### Usage in Code
 - **For ROS integration**: Use `get_hand_controller_transform_ros()` to get transforms already converted to ROS coordinates
 - **For OpenXR/native data**: Use `get_hand_controller_transform_openxr()` to get transforms in the native OpenXR coordinate system
+- **For body-relative teleop**: Install `teleop-pointer-frame-relative.apk` and keep `hand_transform_type="pointer"`
 - **For TF publishing**: The `ros2_tf_publisher.py` node publishes transforms in the `meta_world` frame (OpenXR coordinates) and uses a static transform to link to the ROS `map` frame, allowing tf2 to handle coordinate conversions automatically
 
 When working with transforms, always be aware of which coordinate system you're using. See the docstrings in the code for specific coordinate system information for each function.

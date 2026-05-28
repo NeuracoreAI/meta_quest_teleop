@@ -12,6 +12,20 @@ from scipy.spatial.transform import Rotation
 
 from meta_quest_teleop.buttons_parser import parse_buttons
 
+HandTransformType = Literal["grip", "model", "pointer"]
+PoseReferenceFrame = Literal["head", "world"]
+_TRANSFORM_TYPE_SUFFIX: dict[HandTransformType, str] = {
+    "grip": "g",
+    "model": "m",
+    "pointer": "p",
+}
+_SUFFIX_TO_TRANSFORM_TYPE: dict[str, HandTransformType] = {
+    v: k for k, v in _TRANSFORM_TYPE_SUFFIX.items()
+}
+DEFAULT_APK_FILENAME = "teleop-pointer-frame-relative.apk"
+# OpenXR -> ROS axis fix quaternion (x,y,z,w)
+_OPENXR_TO_ROS_ROTATION = Rotation.from_quat([0.5, -0.5, -0.5, 0.5]).as_matrix()
+
 
 def eprint(*args: Any, **kwargs: Any) -> None:
     """Print error messages to stderr."""
@@ -37,6 +51,10 @@ class MetaQuestReader:
         APK_name: str = "com.rail.oculus.teleop",
         run: bool = True,
         axis_mask: list[int] | None = None,
+        hand_transform_type: HandTransformType = "pointer",
+        pose_reference_frame: PoseReferenceFrame = "head",
+        apk_filename: str = DEFAULT_APK_FILENAME,
+        communication_timeout_s: float = 0.5,
     ) -> None:
         """Initialize the MetaQuestReader.
 
@@ -47,6 +65,17 @@ class MetaQuestReader:
             run: Whether to start reader immediately. Defaults to True.
             axis_mask: Mask for axes [x, y, z, roll, pitch, yaw]. 1 = enabled, 0 = disabled.
                        Masked axes (x, y, z, roll, pitch, yaw) will be zeroed.
+            hand_transform_type: Which controller transform to read from the APK
+                stream: ``grip``, ``model``, or ``pointer``. Use ``pointer`` with
+                ``teleop-pointer-frame-relative.apk`` for hand poses in the headset
+                tracking frame (head/body-relative when the device is chest-mounted).
+            apk_filename: APK file under ``meta_quest_teleop/APK/`` used when
+                installing onto the headset.
+            pose_reference_frame: ``head`` for frame-relative APK poses (hand in
+                headset frame). Uses rotation conjugation for OpenXR->ROS. ``world``
+                for play-space poses (left-multiply conversion).
+            communication_timeout_s: Max seconds without receiving a valid Quest
+                payload before watchdog marks communication as stale.
         """
         self.running = False
         self.last_transforms: dict[str, Any] | None = {}
@@ -57,6 +86,16 @@ class MetaQuestReader:
         self.ip_address = ip_address
         self.port = port
         self.APK_name = APK_name
+        if hand_transform_type not in _TRANSFORM_TYPE_SUFFIX:
+            raise ValueError(
+                f"hand_transform_type must be one of {list(_TRANSFORM_TYPE_SUFFIX)}"
+            )
+        self.hand_transform_type: HandTransformType = hand_transform_type
+        if pose_reference_frame not in ("head", "world"):
+            raise ValueError("pose_reference_frame must be 'head' or 'world'")
+        self.pose_reference_frame: PoseReferenceFrame = pose_reference_frame
+        self.apk_filename = apk_filename
+        self.communication_timeout_s = max(communication_timeout_s, 0.0)
 
         # Validate axis mask
         if axis_mask is not None:
@@ -225,7 +264,7 @@ class MetaQuestReader:
                     APK_path = os.path.join(
                         os.path.dirname(os.path.realpath(__file__)),
                         "APK",
-                        "teleop-debug.apk",
+                        self.apk_filename,
                     )
                 success = self.device.install(APK_path, test=True, reinstall=reinstall)
                 installed = self.device.is_installed(self.APK_name)
@@ -323,6 +362,17 @@ class MetaQuestReader:
                 count += 1
             if count == 16:
                 transforms[left_right_char] = transform
+                # APK sends lg/lm/lp and rg/rm/rp (grip/model/pointer per hand).
+                if (
+                    len(left_right_char) == 2
+                    and left_right_char[0] in "lr"
+                    and left_right_char[1] in _SUFFIX_TO_TRANSFORM_TYPE
+                ):
+                    hand = left_right_char[0]
+                    transform_name = _SUFFIX_TO_TRANSFORM_TYPE[left_right_char[1]]
+                    transforms[f"{hand}_{transform_name}"] = transform
+                elif left_right_char in ("l", "r"):
+                    transforms[left_right_char] = transform
         buttons = parse_buttons(buttons_string)
         return transforms, buttons
 
@@ -382,37 +432,82 @@ class MetaQuestReader:
 
         return transform_masked
 
+    @staticmethod
+    def openxr_pose_to_ros(
+        transform_openxr: np.ndarray,
+        pose_reference_frame: PoseReferenceFrame = "head",
+    ) -> np.ndarray:
+        """Convert an OpenXR 4x4 pose to ROS coordinates.
+
+        Head-relative poses (frame-relative APK) must use rotation conjugation.
+        World-space poses use left-multiplication.
+        """
+        rotation = transform_openxr[:3, :3]
+        translation = transform_openxr[:3, 3]
+        transform_ros = np.eye(4)
+        if pose_reference_frame == "head":
+            transform_ros[:3, :3] = (
+                _OPENXR_TO_ROS_ROTATION @ rotation @ _OPENXR_TO_ROS_ROTATION.T
+            )
+        else:
+            transform_ros[:3, :3] = _OPENXR_TO_ROS_ROTATION @ rotation
+        transform_ros[:3, 3] = _OPENXR_TO_ROS_ROTATION @ translation
+        return transform_ros
+
+    def _lookup_hand_transform(
+        self,
+        hand: Literal["left", "right", "l", "r"],
+        transform_type: HandTransformType | None = None,
+    ) -> np.ndarray | None:
+        """Return the latest validated 4x4 transform for a hand (OpenXR coords)."""
+        hand_key = self._normalize_hand_key(hand)
+        ttype = transform_type or self.hand_transform_type
+        suffix = _TRANSFORM_TYPE_SUFFIX[ttype]
+        candidate_keys = (
+            f"{hand_key}_{ttype}",
+            f"{hand_key}{suffix}",
+            hand_key,
+        )
+        with self._lock:
+            for key in candidate_keys:
+                if key in self._latest_transforms:
+                    return self._latest_transforms[key].copy()
+        return None
+
     def get_hand_controller_transform_openxr(
         self,
         hand: Literal["left", "right", "l", "r"] = "right",
+        transform_type: HandTransformType | None = None,
     ) -> np.ndarray | None:
         """Get the 4x4 transformation matrix for a hand controller.
 
         The transform is in the OpenXR coordinate system.
         See README.md "Coordinate Systems: ROS vs OpenXR" section for details.
 
+        With ``teleop-pointer-frame-relative.apk`` and ``transform_type="pointer"``,
+        poses are in the headset tracking frame (head-relative). When the headset
+        is chest-mounted, this acts as a body-fixed teleop reference.
+
         Args:
             hand: Which hand ('left', 'right', 'l', or 'r')
+            transform_type: ``grip``, ``model``, or ``pointer``. Defaults to the
+                reader's ``hand_transform_type`` (``pointer`` by default).
 
         Returns:
             4x4 numpy array transformation matrix, or None if not
             available
         """
-        hand_key = self._normalize_hand_key(hand)
-
-        # Use hand key directly as the pointer transform key
-        key = hand_key
-        if key in self._latest_transforms:
-            with self._lock:
-                transform_openxr = self._latest_transforms[key].copy()
-            if self.axis_mask is not None:
-                transform_openxr = self._apply_axis_mask(transform_openxr)
-            return transform_openxr
-        return None
+        transform_openxr = self._lookup_hand_transform(hand, transform_type)
+        if transform_openxr is None:
+            return None
+        if self.axis_mask is not None:
+            transform_openxr = self._apply_axis_mask(transform_openxr)
+        return transform_openxr
 
     def get_hand_controller_transform_ros(
         self,
         hand: Literal["left", "right", "l", "r"] = "right",
+        transform_type: HandTransformType | None = None,
     ) -> np.ndarray | None:
         """Get the 4x4 transformation matrix for a hand controller.
 
@@ -426,23 +521,21 @@ class MetaQuestReader:
 
         Args:
             hand: Which hand ('left', 'right', 'l', or 'r')
+            transform_type: ``grip``, ``model``, or ``pointer``. Defaults to the
+                reader's ``hand_transform_type``.
 
         Returns:
             4x4 transformation matrix in ROS coordinates, or None if not
             available
         """
-        transform_openxr = self.get_hand_controller_transform_openxr(hand)
+        transform_openxr = self.get_hand_controller_transform_openxr(
+            hand, transform_type=transform_type
+        )
 
         if transform_openxr is None:
             return None
 
-        # Apply static transform: quaternion [0.5, -0.5, -0.5, 0.5]
-        Q = Rotation.from_quat([0.5, -0.5, -0.5, 0.5])
-        T_static = np.eye(4)
-        T_static[:3, :3] = Q.as_matrix()
-
-        transform_ros = T_static @ transform_openxr
-        return transform_ros
+        return self.openxr_pose_to_ros(transform_openxr, self.pose_reference_frame)
 
     def get_button_state(self, button_name: str) -> bool:
         """Get current state of a button.
