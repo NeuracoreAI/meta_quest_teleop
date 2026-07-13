@@ -1,6 +1,9 @@
 default_install_hook_types: [pre-commit]
 default_stages: [pre-commit]
 
+default_language_version:
+  node: "20.18.1"
+
 repos:
   - repo: https://github.com/pycqa/isort
     rev: 7.0.0

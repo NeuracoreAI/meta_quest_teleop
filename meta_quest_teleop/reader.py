@@ -1,6 +1,8 @@
 """Meta Quest Reader."""
 
 import os
+import select
+import subprocess
 import sys
 import threading
 import time
@@ -123,10 +125,102 @@ class MetaQuestReader:
             'am start -n "com.rail.oculus.teleop/com.rail.oculus.teleop.MainActivity" '
             "-a android.intent.action.MAIN -c android.intent.category.LAUNCHER"
         )
+        serial = self.device.serial
+        # Two different "-s" flags here, for two different programs:
+        #   adb -s <serial>   selects the target device (adb global option).
+        #   logcat -s <tag>   silences everything except the teleop app's pose
+        #                     lines, so the reader needn't drain the full device
+        #                     log (this source-side filter is half the latency fix).
+        # We shell out to the adb binary on purpose: that separate OS process
+        # drains the device socket into the kernel pipe independently of this
+        # process's GIL, so under heavy thread contention (the dual-teleop case)
+        # the Python reader only has to keep up with a local pipe. A ppadb
+        # in-process socket reader was benchmarked and degraded ~40-60% worse
+        # under that contention. See Misc/logcat-reader-latency.md.
+        cmd = [
+            "adb",
+            "-s",
+            serial,
+            "shell",
+            "logcat",
+            "-T",
+            "0",
+            "-s",
+            self.tag,
+        ]
         self.thread = threading.Thread(
-            target=self.device.shell, args=("logcat -T 0", self.read_logcat_by_line)
+            target=self._read_logcat_subprocess,
+            args=(cmd,),
+            daemon=True,
         )
         self.thread.start()
+
+    def _read_logcat_subprocess(self, cmd: list[str]) -> None:
+        """Read logcat output from adb shell subprocess.
+
+        Reads the pipe in large chunks (one read() per select() wake-up, not
+        one per byte as readline() on an unbuffered pipe would do) and
+        processes every complete line in the chunk.  This keeps the reader
+        ahead of the logcat stream even when other busy threads hold the GIL;
+        with byte-wise reads the thread falls behind, the pipe backs up, and
+        consumers see controller poses that are seconds stale.
+        """
+        try:
+            with subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=0,
+                close_fds=True,
+                start_new_session=True,
+            ) as proc:
+                assert proc.stdout is not None
+                fd = proc.stdout.fileno()
+                buffer = b""
+                while self.running:
+                    # Timeout so self.running is re-checked while logcat is quiet
+                    readable, _, _ = select.select([fd], [], [], 1.0)
+                    if not readable:
+                        continue
+                    chunk = os.read(fd, 65536)
+                    if not chunk:
+                        break
+                    buffer += chunk
+                    if b"\n" not in buffer:
+                        continue
+                    complete, buffer = buffer.rsplit(b"\n", 1)
+                    for raw_line in complete.split(b"\n"):
+                        data = self.extract_data(
+                            raw_line.decode("utf-8", errors="replace").strip()
+                        )
+                        if not data:
+                            continue
+                        transforms, buttons = MetaQuestReader.process_data(data)
+                        with self._lock:
+                            self.last_transforms, self.last_buttons = (
+                                transforms,
+                                buttons,
+                            )
+
+                        if transforms is not None:
+                            for key, matrix in transforms.items():
+                                validated = self._validate_transform(matrix)
+                                if validated is not None:
+                                    self._latest_transforms[key] = validated
+
+                        if buttons is not None:
+                            self._latest_buttons = buttons
+                            self._handle_button_events(buttons)
+                proc.terminate()
+                proc.wait(timeout=5)
+        except FileNotFoundError:
+            eprint(
+                "⚠️ adb binary not found. Install android-tools-adb in the container."
+            )
+        except OSError as e:
+            eprint(f"⚠️ Failed to start adb logcat subprocess: {e}")
+        except subprocess.SubprocessError as e:
+            eprint(f"⚠️ adb subprocess error: {e}")
 
     def stop(self) -> None:
         """Stop reading data from the Meta Quest device."""
@@ -626,38 +720,6 @@ class MetaQuestReader:
                 callback()
             finally:
                 self._callbacks_locks[event_name].release()
-
-    def read_logcat_by_line(self, connection: Any) -> None:
-        """Read logcat output line by line.
-
-        Args:
-            connection: Connection to read from.
-        """
-        file_obj = connection.socket.makefile(mode="rb", buffering=1024)
-        while self.running:
-            try:
-                line = file_obj.readline().decode("utf-8", errors="replace").strip()
-                data = self.extract_data(line)
-                if data:
-                    transforms, buttons = MetaQuestReader.process_data(data)
-                    with self._lock:
-                        self.last_transforms, self.last_buttons = transforms, buttons
-
-                    # Update validated transforms and handle button events
-                    if transforms is not None:
-                        for key, matrix in transforms.items():
-                            validated = self._validate_transform(matrix)
-                            if validated is not None:
-                                self._latest_transforms[key] = validated
-
-                    if buttons is not None:
-                        self._latest_buttons = buttons
-                        self._handle_button_events(buttons)
-
-            except UnicodeDecodeError as e:
-                eprint(f"⚠️ Unicode decode error reading logcat line: {e}")
-        file_obj.close()
-        connection.close()
 
 
 def main() -> None:
