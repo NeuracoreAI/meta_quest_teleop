@@ -14,6 +14,10 @@ from scipy.spatial.transform import Rotation
 
 from meta_quest_teleop.buttons_parser import parse_buttons
 
+if sys.platform == "win32":
+    import msvcrt
+    from ctypes import byref, c_ulong, windll
+
 
 def eprint(*args: Any, **kwargs: Any) -> None:
     """Print error messages to stderr."""
@@ -22,6 +26,32 @@ def eprint(*args: Any, **kwargs: Any) -> None:
     print(*args, file=sys.stderr, **kwargs)
     RESET = "\033[0;0m"
     sys.stderr.write(RESET)
+
+
+def _pipe_readable(fd: int, timeout_s: float) -> bool:
+    """Return True if ``fd`` has data ready within ``timeout_s``.
+
+    Uses ``select`` on POSIX. On Windows, ``select`` only accepts sockets, so
+    we poll the pipe with ``PeekNamedPipe`` instead.
+    """
+    if sys.platform != "win32":
+        readable, _, _ = select.select([fd], [], [], timeout_s)
+        return bool(readable)
+
+    handle = msvcrt.get_osfhandle(fd)
+    deadline = time.perf_counter() + timeout_s
+    avail = c_ulong(0)
+    while True:
+        if not windll.kernel32.PeekNamedPipe(
+            handle, None, 0, None, byref(avail), None
+        ):
+            # Broken/closed pipe — treat as readable so the caller hits EOF.
+            return True
+        if avail.value > 0:
+            return True
+        if time.perf_counter() >= deadline:
+            return False
+        time.sleep(0.001)
 
 
 class MetaQuestReader:
@@ -158,7 +188,7 @@ class MetaQuestReader:
     def _read_logcat_subprocess(self, cmd: list[str]) -> None:
         """Read logcat output from adb shell subprocess.
 
-        Reads the pipe in large chunks (one read() per select() wake-up, not
+        Reads the pipe in large chunks (one read() per readable wake-up, not
         one per byte as readline() on an unbuffered pipe would do) and
         processes every complete line in the chunk.  This keeps the reader
         ahead of the logcat stream even when other busy threads hold the GIL;
@@ -166,21 +196,23 @@ class MetaQuestReader:
         consumers see controller poses that are seconds stale.
         """
         try:
-            with subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                bufsize=0,
-                close_fds=True,
-                start_new_session=True,
-            ) as proc:
+            # close_fds/start_new_session are POSIX-oriented; on Windows the
+            # defaults are safer and avoid CREATE_NEW_PROCESS_GROUP quirks.
+            popen_kwargs: dict[str, Any] = {
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.DEVNULL,
+                "bufsize": 0,
+            }
+            if sys.platform != "win32":
+                popen_kwargs["close_fds"] = True
+                popen_kwargs["start_new_session"] = True
+            with subprocess.Popen(cmd, **popen_kwargs) as proc:
                 assert proc.stdout is not None
                 fd = proc.stdout.fileno()
                 buffer = b""
                 while self.running:
                     # Timeout so self.running is re-checked while logcat is quiet
-                    readable, _, _ = select.select([fd], [], [], 1.0)
-                    if not readable:
+                    if not _pipe_readable(fd, 1.0):
                         continue
                     chunk = os.read(fd, 65536)
                     if not chunk:
@@ -215,7 +247,7 @@ class MetaQuestReader:
                 proc.wait(timeout=5)
         except FileNotFoundError:
             eprint(
-                "⚠️ adb binary not found. Install android-tools-adb in the container."
+                "⚠️ adb binary not found. Install android-tools-adb / platform-tools."
             )
         except OSError as e:
             eprint(f"⚠️ Failed to start adb logcat subprocess: {e}")
