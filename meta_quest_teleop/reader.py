@@ -319,7 +319,7 @@ class MetaQuestReader:
                     APK_path = os.path.join(
                         os.path.dirname(os.path.realpath(__file__)),
                         "APK",
-                        "teleop-debug.apk",
+                        "teleop-pointer-frame-relative.apk",
                     )
                 success = self.device.install(APK_path, test=True, reinstall=reinstall)
                 installed = self.device.is_installed(self.APK_name)
