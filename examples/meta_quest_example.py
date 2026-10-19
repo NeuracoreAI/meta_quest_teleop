@@ -13,8 +13,8 @@ import time
 from axon.node import Node
 from axon.runtime import RuntimeManager
 
-from meta_quest.messages import QuestHandsMsg
-from meta_quest.meta_quest_node import MetaQuestNode
+from axon_meta_quest.messages import QuestHandsMsg
+from axon_meta_quest.meta_quest_node import MetaQuestNode
 
 
 class PrintNode(Node):

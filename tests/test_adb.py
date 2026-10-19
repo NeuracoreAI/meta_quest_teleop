@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from meta_quest import meta_quest_node as node_module
-from meta_quest.meta_quest_node import MetaQuestNode
+from axon_meta_quest import meta_quest_node as node_module
+from axon_meta_quest.meta_quest_node import MetaQuestNode
 
 
 def fake_adb(

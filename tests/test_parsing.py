@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from meta_quest import parsing
+from axon_meta_quest import parsing
 
 RIGHT = "1 0 0 0.1 0 1 0 0.2 0 0 1 0.3 0 0 0 1"
 LEFT = "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"

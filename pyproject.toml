@@ -3,7 +3,7 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "meta_quest_teleop"
+name = "axon_meta_quest"
 version = "2.0.0"
 description = "Read Meta Quest controller poses and buttons over ADB and publish them as an AXOn node."
 readme = "README.md"
@@ -30,7 +30,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-meta_quest = ["APK/*.apk", "py.typed"]
+axon_meta_quest = ["APK/*.apk", "py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

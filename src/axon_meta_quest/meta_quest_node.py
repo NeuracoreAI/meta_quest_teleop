@@ -19,9 +19,9 @@ import numpy as np
 from axon.messages import LogLevel
 from axon.node import Node
 
-from meta_quest import parsing
-from meta_quest import transforms as tf
-from meta_quest.messages import HandButtons, HandPose, HandState, QuestHandsMsg
+from axon_meta_quest import parsing
+from axon_meta_quest import transforms as tf
+from axon_meta_quest.messages import HandButtons, HandPose, HandState, QuestHandsMsg
 
 
 class MetaQuestNode(Node):
@@ -176,7 +176,7 @@ class MetaQuestNode(Node):
             if apk.read(7) == b"version":
                 raise RuntimeError(
                     f"{apk_path} is a Git LFS pointer, not the APK. Install "
-                    "meta_quest_teleop with Git LFS enabled: add `lfs = true` to its "
+                    "axon_meta_quest with Git LFS enabled: add `lfs = true` to its "
                     "[tool.uv.sources] entry or set UV_GIT_LFS=1, then reinstall."
                 )
         args = ["install", "-t"] + (["-r"] if reinstall else [])

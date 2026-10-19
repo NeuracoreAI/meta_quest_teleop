@@ -1,4 +1,4 @@
-"""AXOn message types published by :class:`meta_quest.meta_quest_node.MetaQuestNode`."""
+"""AXOn message types published by :class:`axon_meta_quest.meta_quest_node.MetaQuestNode`."""
 
 from __future__ import annotations
 

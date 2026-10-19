@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 
-from meta_quest import transforms as tf
+from axon_meta_quest import transforms as tf
 
 ROTATIONS = list(Rotation.random(300, random_state=0)) + [
     Rotation.identity(),

@@ -4,7 +4,7 @@ Note this repo is an extension of: https://github.com/rail-berkeley/oculus_reade
 
 This repository provides the tool to read the position and pressed button from the Meta Quest device.
 
-Meta Quest reader consists of two elements: python script which receives the readings from the APK and the APK itself. **We use our pointer APK on the device** (see `src/meta_quest/APK/`). Currently the pose of the controllers and pressed buttons are transferred from the APK. This behavior can be extended using provided APK [source code](app_source).
+Meta Quest reader consists of two elements: python script which receives the readings from the APK and the APK itself. **We use our pointer APK on the device** (see `src/axon_meta_quest/APK/`). Currently the pose of the controllers and pressed buttons are transferred from the APK. This behavior can be extended using provided APK [source code](app_source).
 
 **Installing the APK on the device:** Follow the APK installation instructions from the [RAIL original repo](https://github.com/rail-berkeley/oculus_reader).
 
@@ -26,7 +26,7 @@ ROS (Robot Operating System) uses a different convention:
 - **Y-axis**: Points left
 - **Z-axis**: Points up
 
-This is the standard coordinate system used in ROS and is available through `meta_quest.transforms.openxr_to_ros()`.
+This is the standard coordinate system used in ROS and is available through `axon_meta_quest.transforms.openxr_to_ros()`.
 
 ### Conversion Between Systems
 The conversion from OpenXR to ROS coordinates is performed using a static rotation quaternion `[0.5, -0.5, -0.5, 0.5]`. This transformation:
@@ -35,7 +35,7 @@ The conversion from OpenXR to ROS coordinates is performed using a static rotati
 - Maps OpenXR backward (+Z) to ROS backward (−X)
 
 ### Usage in Code
-- **For ROS integration**: Use `meta_quest.transforms.openxr_to_ros(matrix)` to convert a 4×4 OpenXR transform to ROS coordinates
+- **For ROS integration**: Use `axon_meta_quest.transforms.openxr_to_ros(matrix)` to convert a 4×4 OpenXR transform to ROS coordinates
 - **For OpenXR/native data**: Use the poses published in `QuestHandsMsg`, which are in the native OpenXR coordinate system
 
 When working with transforms, always be aware of which coordinate system you're using. See the docstrings in the code for specific coordinate system information for each function.
@@ -65,22 +65,22 @@ Add it to your project's `pyproject.toml`. The APKs are stored in Git LFS, so
 
 ```toml
 [project]
-dependencies = ["meta_quest_teleop"]
+dependencies = ["axon_meta_quest"]
 
 [tool.uv.sources]
-meta_quest_teleop = { git = "https://github.com/NeuracoreAI/meta_quest_teleop.git", branch = "main", lfs = true }
+axon_meta_quest = { git = "https://github.com/NeuracoreAI/meta_quest_teleop.git", branch = "main", lfs = true }
 ```
 
-Then run `uv sync`. For a one-off install: `UV_GIT_LFS=1 uv pip install "meta_quest_teleop @ git+https://github.com/NeuracoreAI/meta_quest_teleop.git"`.
+Then run `uv sync`. For a one-off install: `UV_GIT_LFS=1 uv pip install "axon_meta_quest @ git+https://github.com/NeuracoreAI/meta_quest_teleop.git"`.
 
-The import name is `meta_quest`:
+The import name is `axon_meta_quest`:
 
 ```python
-from meta_quest import MetaQuestNode
+from axon_meta_quest import MetaQuestNode
 ```
 
-Version 2 uses the `meta_quest` import name and does not support the old
-`meta_quest_teleop` imports.
+The distribution and import name are now `axon_meta_quest`. Update older
+`meta_quest` or `meta_quest_teleop` imports when upgrading.
 
 ### For development
 
@@ -154,15 +154,15 @@ It is possible to stop the app from adb. Use: `adb shell am force-stop com.rail.
 
 ## AXOn node
 
-`meta_quest.MetaQuestNode` connects to the headset over adb, installs and launches
+`axon_meta_quest.MetaQuestNode` connects to the headset over adb, installs and launches
 the teleop app, and runs as a
 [neuracore_axon](https://github.com/NeuracoreAI/neuracore_axon) node. It is named
-`meta_quest` and publishes a `QuestHandsMsg` (`meta_quest.messages`) with both
+`meta_quest` and publishes a `QuestHandsMsg` (`axon_meta_quest.messages`) with both
 controllers' OpenXR pose and buttons on `/meta_quest/hands`:
 
 ```python
 from axon.runtime import RuntimeManager
-from meta_quest import MetaQuestNode
+from axon_meta_quest import MetaQuestNode
 
 quest = MetaQuestNode.start()  # ip_address="..." for wireless
 ...

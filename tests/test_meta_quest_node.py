@@ -14,8 +14,8 @@ import pytest
 from axon.node import Node
 from axon.runtime import RuntimeManager
 
-from meta_quest.messages import QuestHandsMsg
-from meta_quest.meta_quest_node import MetaQuestNode
+from axon_meta_quest.messages import QuestHandsMsg
+from axon_meta_quest.meta_quest_node import MetaQuestNode
 
 # Right controller at (0.1, 0.2, 0.3) rotated 90 degrees about z; left untracked.
 RIGHT_MATRIX = "0 -1 0 0.1 1 0 0 0.2 0 0 1 0.3 0 0 0 1"

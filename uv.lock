@@ -274,7 +274,7 @@ wheels = [
 ]
 
 [[package]]
-name = "meta-quest-teleop"
+name = "axon-meta-quest"
 version = "2.0.0"
 source = { editable = "." }
 dependencies = [
