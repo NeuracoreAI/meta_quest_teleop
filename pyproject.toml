@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meta_quest_teleop"
+version = "2.0.0"
+description = "Read Meta Quest controller poses and buttons over ADB and publish them as an AXOn node."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+    # AXOn is not on PyPI. Pinned to the head of the unmerged neuracore_axon PR
+    # stack (PR #10); move to main once it merges.
+    "axon @ git+https://github.com/NeuracoreAI/neuracore_axon.git@5c568be7aad2e2323fb24f727828ea3101e80e11",
+    # Both already come with axon: numpy is imported directly here, and
+    # neuracore_types (an axon dependency) imports yaml without declaring it.
+    "numpy",
+    "pyyaml",
+    "scipy>=1.11",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit",
+    "pytest",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+meta_quest = ["APK/*.apk", "py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

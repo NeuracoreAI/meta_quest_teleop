@@ -69,3 +69,16 @@ rclpy
 rotvec
 teleop
 wlan
+neuracore
+Neuracore
+pydantic
+authorised
+pytest
+setuptools
+pyyaml
+insteadOf
+plugdev
+capsys
+testpaths
+pyproject
+venv
