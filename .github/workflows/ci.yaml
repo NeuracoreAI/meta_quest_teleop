@@ -17,3 +17,20 @@ jobs:
       with:
         python-version: '3.11'
     - uses: pre-commit/action@v3.0.1
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        lfs: true  # tests check the bundled APK is real, not an LFS pointer
+    - uses: astral-sh/setup-uv@v6
+    # neuracore_axon is private: NEURACORE_AXON_TOKEN must be a token with read
+    # access to it (repository secret).
+    - name: Allow access to neuracore_axon
+      run: >-
+        git config --global
+        url."https://x-access-token:${{ secrets.NEURACORE_AXON_TOKEN }}@github.com/NeuracoreAI/neuracore_axon".insteadOf
+        "https://github.com/NeuracoreAI/neuracore_axon"
+    - run: uv sync --locked
+    - run: uv run pytest -q

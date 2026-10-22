@@ -4,7 +4,7 @@ Note this repo is an extension of: https://github.com/rail-berkeley/oculus_reade
 
 This repository provides the tool to read the position and pressed button from the Meta Quest device.
 
-Meta Quest reader consists of two elements: python script which receives the readings from the APK and the APK itself. **We use our pointer APK on the device** (see `meta_quest_teleop/APK/`). Currently the pose of the controllers and pressed buttons are transferred from the APK. This behavior can be extended using provided APK [source code](app_source).
+Meta Quest reader consists of two elements: python script which receives the readings from the APK and the APK itself. **We use our pointer APK on the device** (see `src/axon_meta_quest/APK/`). Currently the pose of the controllers and pressed buttons are transferred from the APK. This behavior can be extended using provided APK [source code](app_source).
 
 **Installing the APK on the device:** Follow the APK installation instructions from the [RAIL original repo](https://github.com/rail-berkeley/oculus_reader).
 
@@ -18,7 +18,7 @@ The Meta Quest device natively uses the **OpenXR coordinate system**:
 - **Y-axis**: Points up
 - **Z-axis**: Points backward (away from the user)
 
-This is the coordinate system used internally by the Meta Quest tracking system and is what you get when calling `get_hand_controller_transform_openxr()`.
+This is the coordinate system used internally by the Meta Quest tracking system and is the frame used by the poses published in `QuestHandsMsg`.
 
 ### ROS Coordinate System
 ROS (Robot Operating System) uses a different convention:
@@ -26,18 +26,17 @@ ROS (Robot Operating System) uses a different convention:
 - **Y-axis**: Points left
 - **Z-axis**: Points up
 
-This is the standard coordinate system used in ROS and is what you get when calling `get_hand_controller_transform_ros()`.
+This is the standard coordinate system used in ROS and is available through `axon_meta_quest.transforms.openxr_to_ros()`.
 
 ### Conversion Between Systems
 The conversion from OpenXR to ROS coordinates is performed using a static rotation quaternion `[0.5, -0.5, -0.5, 0.5]`. This transformation:
-- Rotates X from right → forward
-- Rotates Y from up → left  
-- Rotates Z from backward → up
+- Maps OpenXR right (+X) to ROS right (−Y)
+- Maps OpenXR up (+Y) to ROS up (+Z)
+- Maps OpenXR backward (+Z) to ROS backward (−X)
 
 ### Usage in Code
-- **For ROS integration**: Use `get_hand_controller_transform_ros()` to get transforms already converted to ROS coordinates
-- **For OpenXR/native data**: Use `get_hand_controller_transform_openxr()` to get transforms in the native OpenXR coordinate system
-- **For TF publishing**: The `ros2_tf_publisher.py` node publishes transforms in the `meta_world` frame (OpenXR coordinates) and uses a static transform to link to the ROS `map` frame, allowing tf2 to handle coordinate conversions automatically
+- **For ROS integration**: Use `axon_meta_quest.transforms.openxr_to_ros(matrix)` to convert a 4×4 OpenXR transform to ROS coordinates
+- **For OpenXR/native data**: Use the poses published in `QuestHandsMsg`, which are in the native OpenXR coordinate system
 
 When working with transforms, always be aware of which coordinate system you're using. See the docstrings in the code for specific coordinate system information for each function.
 
@@ -53,9 +52,46 @@ git lfs install # has to be run only once on a single user account
 
 Now you can clone this repository either with HTTPS or SSH.
 
+## Install
+
+Requires Python 3.12+ and `adb` on PATH (see [Setup of the ADB](#setup-of-the-adb)).
+Python dependencies include NumPy, SciPy, PyYAML, and [neuracore_axon](https://github.com/NeuracoreAI/neuracore_axon)
+(a private repo, so your git credentials need access to it).
+
+### As a library (uv)
+
+Add it to your project's `pyproject.toml`. The APKs are stored in Git LFS, so
+`lfs = true` is required; without it you get pointer files instead of the APKs:
+
+```toml
+[project]
+dependencies = ["axon_meta_quest"]
+
+[tool.uv.sources]
+axon_meta_quest = { git = "https://github.com/NeuracoreAI/meta_quest_teleop.git", branch = "main", lfs = true }
+```
+
+Then run `uv sync`. For a one-off install: `UV_GIT_LFS=1 uv pip install "axon_meta_quest @ git+https://github.com/NeuracoreAI/meta_quest_teleop.git"`.
+
+The import name is `axon_meta_quest`:
+
+```python
+from axon_meta_quest import MetaQuestNode
+```
+
+The distribution and import name are now `axon_meta_quest`. Update older
+`meta_quest` or `meta_quest_teleop` imports when upgrading.
+
+### For development
+
+```bash
+uv sync          # creates .venv with the tested versions from uv.lock
+uv run pytest
+```
+
 ## Setup of the ADB
 
-[ADB](https://developer.android.com/studio/command-line/adb) is required for the communication between Oculus Quest and the python reader script.
+[ADB](https://developer.android.com/studio/command-line/adb) is required for the communication between Oculus Quest and the Python node.
 
 To install ADB on Ubuntu run:
 ```
@@ -96,7 +132,7 @@ If you haven’t used Meta Quest before, start it and follow the steps to create
 ### Communication using the USB cable (easier to set up)
 
 1. Connect Oculus Quest to PC with USB cable. This is required to establish the connection.
-2. Run the exemplary file: `python meta_quest_reader/reader.py/reader.py`
+2. Run the example, which prints both controllers' state: `uv run python examples/meta_quest_example.py`
 
 ### Communication over the network (more portable)
 
@@ -111,8 +147,30 @@ If you haven’t used Meta Quest before, start it and follow the steps to create
     Expected output:  
     `10.0.30.0/19 dev wlan0  proto kernel  scope link  **src **10.0.32.101`
 6. Read the IP address of the device standing after `**src`.
-7. Provide the IP address when creating OculusReader object.
-8. Run the exemplary file: `python oculus_reader/reader.py`
+7. Provide the IP address when starting the node: `MetaQuestNode.start(ip_address="10.0.32.101")`, or run the example: `uv run python examples/meta_quest_example.py --ip 10.0.32.101`
 
 ### Stopping the app from adb
 It is possible to stop the app from adb. Use: `adb shell am force-stop com.rail.oculus.teleop`
+
+## AXOn node
+
+`axon_meta_quest.MetaQuestNode` connects to the headset over adb, installs and launches
+the teleop app, and runs as a
+[neuracore_axon](https://github.com/NeuracoreAI/neuracore_axon) node. It is named
+`meta_quest` and publishes a `QuestHandsMsg` (`axon_meta_quest.messages`) with both
+controllers' OpenXR pose and buttons on `/meta_quest/hands`:
+
+```python
+from axon.runtime import RuntimeManager
+from axon_meta_quest import MetaQuestNode
+
+quest = MetaQuestNode.start()  # ip_address="..." for wireless
+...
+quest.terminate()
+RuntimeManager.shutdown()
+```
+
+Subscribe from other nodes with
+`self.create_subscriber("/meta_quest/hands", QuestHandsMsg, callback)`. The node
+stops itself after 5 s without new controller data (`disconnect_timeout=None`
+disables this). See `examples/meta_quest_example.py` for a runnable launcher.
