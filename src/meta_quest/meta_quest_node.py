@@ -16,7 +16,6 @@ import subprocess
 import time
 
 import numpy as np
-from axon.messages import LogLevel
 from axon.node import Node
 
 from meta_quest import parsing
@@ -332,7 +331,7 @@ class MetaQuestNode(Node):
             if self._disconnected_since is None:
                 self._disconnected_since = now
                 self._stale_reason = self._describe_stale()
-                self.log(self._stale_reason, LogLevel.WARNING)
+                self.log(f"WARNING: {self._stale_reason}")
             elif (
                 self._disconnect_timeout is not None
                 and now - self._disconnected_since > self._disconnect_timeout
