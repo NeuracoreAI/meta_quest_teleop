@@ -11,7 +11,7 @@ license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
     # AXOn is not on PyPI.
-    "axon @ git+https://github.com/NeuracoreAI/neuracore_axon.git@main",
+    "axon",
     # Both already come with axon: numpy is imported directly here, and
     # neuracore_types (an axon dependency) imports yaml without declaring it.
     "numpy",
@@ -24,6 +24,9 @@ dev = [
     "pre-commit",
     "pytest",
 ]
+
+[tool.uv.sources]
+axon = { git = "https://github.com/NeuracoreAI/neuracore_axon", branch = "main" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
